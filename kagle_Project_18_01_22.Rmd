@@ -1,0 +1,122 @@
+---
+title: "Kagle"
+author: "Berlens"
+date: "18 1 2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+library(data.table)
+library(ggplot2)
+library(randomForest)
+library(dplyr)
+library(corrplot)
+library(knitr)
+library(kableExtra)
+#library(easyGgplot2)
+library(caret)
+
+```
+
+
+``` {kagle}
+# File download
+if (!file.exists("./Initial Data/test.csv")) {
+
+        dir.create("./Initial Data")
+        
+        download.file("https://www.kaggle.com/c/house-prices-advanced-regression-techniques/download/test.csv",
+                      "./Initial Data/test.csv") 
+        download.file("https://www.kaggle.com/c/house-prices-advanced-regression-techniques/download/train.csv",
+                      "./Initial Data/train.csv") 
+}
+
+# Data import
+raw.test <- fread(input = "./Initial Data/test.csv", sep = ",", stringsAsFactors = F, data.table = F)
+raw.train <- fread(input = "./Initial Data/train.csv", sep = ",", stringsAsFactors = F, data.table = F)
+
+# Bind and label both train and test sets
+fulldt <- rbind(raw.train[,-81], raw.test)
+fulldt <- cbind(fulldt, Set = c(rep("Train", times = dim(raw.train)[1]),
+                                rep("Test", times = dim(raw.test)[1])))
+
+```
+
+
+```{kagle}
+# Check for missing values
+x <- colSums(sapply(fulldt, is.na))
+
+# Set table
+x <- data.frame(Variables = names(x), NA.Count = x); rownames(x) <- c()
+
+# Remove variables that don't have missing values
+x <- x %>% filter(NA.Count > 0)
+
+kable(x, "html") %>%
+         kable_styling(full_width = F)
+
+```
+
+```{kagle}
+y <- c("Alley", "BsmtQual", "BsmtExposure", "BsmtFinType1", "BsmtFinType2", "FireplaceQu", "PoolQC", "Fence", "MiscFeature", "GarageType", "GarageFinish", "GarageQual", "GarageCond", "BsmtCond")
+fulldt[,y] <- apply(fulldt[,y], 2, 
+                    function(x) {
+                            replace(x, is.na(x), "None")
+                            }
+                    )
+
+```
+
+```{kagle}
+fulldt$GarageYrBlt[is.na(fulldt$GarageYrBlt)] <- fulldt$YearBuilt[is.na(fulldt$GarageYrBlt)]
+```
+
+```{kagle}
+table(sapply(fulldt, class))
+
+```
+
+```{kagle}
+# Colect name of variables that are character
+class.list <- sapply(fulldt, class)
+class.list.character <- names(class.list[which(class.list=="character")])
+
+# Convert to factor
+fulldt[class.list.character] <- lapply(fulldt[class.list.character], factor)
+
+# Fix MSSubClass class
+fulldt$MSSubClass <- factor(fulldt$MSSubClass)
+
+```
+
+```{kagle}
+# Create a "total area" feature by adding the basement area and ground living area
+fulldt$TotalArea <- fulldt$GrLivArea + fulldt$TotalBsmtSF
+
+# Create a "total number of baths" feature by adding all bathroom features
+fulldt$TotalBaths <- fulldt$BsmtFullBath + 
+                                fulldt$BsmtHalfBath +
+                                fulldt$FullBath + 
+                                fulldt$HalfBath
+
+# Create a "area aboveground" feature by adding the areas of the first and second floor
+fulldt$AreaAbvground <- fulldt$`1stFlrSF` + fulldt$`2ndFlrSF`
+
+```
+
+```{kagle}
+
+# Subset numerical variables that are from the "train" set
+fulldt.num.train <- fulldt %>% filter(Set == "Train") %>% 
+                                select(which(sapply(.,is.integer)), which(sapply(., is.numeric))) %>%
+                                mutate(SalePrice = raw.train$SalePrice) #Add the "SalePrice" variable
+
+```
+
+
+
+
